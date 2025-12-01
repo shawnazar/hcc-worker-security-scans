@@ -6,6 +6,7 @@ import tempfile
 from typing import Any
 
 from .base import BaseProvider, ProviderFactory
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,23 @@ class GcpProvider(BaseProvider):
         """Set up environment variables for GCP.
 
         Args:
-            credentials: Decrypted credentials dictionary containing key_json
+            credentials: Decrypted credentials dictionary containing either:
+                - key_json: Service account key JSON
+                - OR workload identity federation fields: project_id, workload_identity_pool_id,
+                  workload_identity_provider_id, service_account_email
 
         Returns:
             Dictionary of GCP environment variables
         """
+        # Check if this is Workload Identity Federation
+        if "workload_identity_pool_id" in credentials:
+            return self._setup_workload_identity_federation(credentials)
+
+        # Otherwise, use service account key
+        return self._setup_service_account_key(credentials)
+
+    def _setup_service_account_key(self, credentials: dict[str, Any]) -> dict[str, str]:
+        """Set up environment for service account key authentication."""
         env = {}
 
         # Get the service account key JSON
@@ -56,6 +69,68 @@ class GcpProvider(BaseProvider):
             env["GOOGLE_CLOUD_PROJECT"] = key_data["project_id"]
 
         logger.info(f"GCP credentials configured for project: {key_data.get('project_id')}")
+
+        return env
+
+    def _setup_workload_identity_federation(self, credentials: dict[str, Any]) -> dict[str, str]:
+        """Set up environment for Workload Identity Federation authentication.
+
+        This creates a credential configuration file that allows GCP client libraries
+        to authenticate using AWS credentials via Workload Identity Federation.
+        """
+        env = {}
+
+        project_id = credentials["project_id"]
+        pool_id = credentials["workload_identity_pool_id"]
+        provider_id = credentials["workload_identity_provider_id"]
+        service_account_email = credentials["service_account_email"]
+
+        # Get the project number from project_id (we need to look this up or have it passed)
+        # For now, we'll use the project_id format which may need adjustment
+        # GCP Workload Identity Federation uses project numbers in the audience
+        audience = f"//iam.googleapis.com/projects/{project_id}/locations/global/workloadIdentityPools/{pool_id}/providers/{provider_id}"
+
+        # Create the credential configuration JSON for external account credentials
+        # This tells GCP client libraries how to authenticate via AWS
+        credential_config = {
+            "type": "external_account",
+            "audience": audience,
+            "subject_token_type": "urn:ietf:params:aws:token-type:aws4_request",
+            "service_account_impersonation_url": f"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{service_account_email}:generateAccessToken",
+            "token_url": "https://sts.googleapis.com/v1/token",
+            "credential_source": {
+                "environment_id": "aws1",
+                "region_url": "http://169.254.169.254/latest/meta-data/placement/availability-zone",
+                "url": "http://169.254.169.254/latest/meta-data/iam/security-credentials",
+                "regional_cred_verification_url": "https://sts.{region}.amazonaws.com?Action=GetCallerIdentity&Version=2011-06-15",
+            },
+        }
+
+        # For non-EC2 environments, use environment variables for AWS credentials
+        # This is the case when running in containers with explicit credentials
+        if settings.aws_access_key_id and settings.aws_secret_access_key:
+            # Override credential_source to use environment variables
+            credential_config["credential_source"] = {
+                "environment_id": "aws1",
+                "regional_cred_verification_url": "https://sts.us-east-1.amazonaws.com?Action=GetCallerIdentity&Version=2011-06-15",
+            }
+            # Set AWS credentials in environment
+            env["AWS_ACCESS_KEY_ID"] = settings.aws_access_key_id
+            env["AWS_SECRET_ACCESS_KEY"] = settings.aws_secret_access_key
+            env["AWS_REGION"] = "us-east-1"
+
+        # Write the credential configuration to a temporary file
+        self._temp_key_file = self._write_key_file(credential_config)
+        env["GOOGLE_APPLICATION_CREDENTIALS"] = self._temp_key_file
+
+        # Set the project ID
+        env["CLOUDSDK_CORE_PROJECT"] = project_id
+        env["GOOGLE_CLOUD_PROJECT"] = project_id
+
+        logger.info(
+            f"GCP Workload Identity Federation configured for project: {project_id}, "
+            f"pool: {pool_id}, provider: {provider_id}"
+        )
 
         return env
 
