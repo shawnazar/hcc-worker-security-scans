@@ -215,22 +215,46 @@ class ScanConsumer:
 
             logger.info(f"Set {len(env_vars)} AWS environment variables")
 
+            # Parse regions_filter - may be a JSON string or already a list
+            regions = scan.regions_filter
+            if isinstance(regions, str):
+                import json as json_module
+
+                try:
+                    regions = json_module.loads(regions)
+                except json_module.JSONDecodeError:
+                    logger.warning(f"Failed to parse regions_filter: {regions}")
+                    regions = None
+
+            logger.info(f"Regions filter: {regions}")
+
             # Create and run Prowler scan
             prowler = ProwlerWrapper(
                 provider=cloud_account.provider,
                 output_dir=settings.prowler_output_dir,
-                regions=scan.regions_filter,
+                regions=regions,
             )
 
-            # Determine check filters
+            # Determine scan parameters based on scan_type
             checks = scan.checks_filter
             services = scan.services_filter
+            compliance = None
+
+            # Map scan_type to Prowler arguments
+            scan_type = scan.scan_type
+            if scan_type.startswith("focus_"):
+                # Focus packs map to specific services
+                services = self._get_focus_pack_services(scan_type)
+            elif scan_type.startswith("compliance_"):
+                # Compliance packs map to Prowler compliance frameworks
+                compliance = self._get_compliance_framework(scan_type)
 
             # Run the scan
             findings = prowler.run_scan(
                 credentials=credentials,
                 checks=checks,
                 services=services,
+                compliance=compliance,
             )
 
             # Process findings
@@ -323,3 +347,41 @@ class ScanConsumer:
         """
         logger.info(f"Received signal {signum}, shutting down...")
         self.stop()
+
+    def _get_focus_pack_services(self, scan_type: str) -> list[str] | None:
+        """Map focus pack scan type to Prowler services.
+
+        Args:
+            scan_type: The scan type (e.g., 'focus_identity', 'focus_network')
+
+        Returns:
+            List of Prowler service names or None
+        """
+        focus_pack_services = {
+            "focus_identity": ["iam", "accessanalyzer", "sso", "cognito"],
+            "focus_network": ["vpc", "ec2", "elb", "elbv2", "cloudfront", "waf", "wafv2", "shield"],
+            "focus_compute": ["ec2", "ecs", "eks", "lambda", "ssm"],
+            "focus_data": ["s3", "rds", "dynamodb", "redshift", "elasticache", "backup"],
+            "focus_logging": ["cloudwatch", "cloudtrail", "config", "guardduty", "securityhub"],
+            "focus_secrets": ["kms", "secretsmanager", "acm"],
+        }
+        return focus_pack_services.get(scan_type)
+
+    def _get_compliance_framework(self, scan_type: str) -> str | None:
+        """Map compliance pack scan type to Prowler compliance framework.
+
+        Args:
+            scan_type: The scan type (e.g., 'compliance_cis', 'compliance_soc2')
+
+        Returns:
+            Prowler compliance framework name or None
+        """
+        compliance_frameworks = {
+            "compliance_cis": "cis_2.0_aws",
+            "compliance_soc2": "soc2_aws",
+            "compliance_pci": "pci_3.2.1_aws",
+            "compliance_hipaa": "hipaa_aws",
+            "compliance_nist": "nist_800_53_revision_5_aws",
+            "compliance_gdpr": "gdpr_aws",
+        }
+        return compliance_frameworks.get(scan_type)
