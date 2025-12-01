@@ -4,6 +4,16 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Allow horizontal scaling with: docker compose up -d --scale security-scan=3
+    # Each worker gets a unique consumer tag to prevent message collisions
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
     environment:
       # Database settings (must match Laravel's database)
       DB_HOST: mariadb

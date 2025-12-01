@@ -4,8 +4,9 @@ import json
 import logging
 import os
 import signal
-import sys
+import socket
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,10 +19,24 @@ from ..config import settings
 from ..db.connection import get_session
 from ..db.models import CloudAccount, Scan
 from ..providers import ProviderFactory
-from ..scanner.prowler_wrapper import ProwlerWrapper
+from ..scanner.prowler_wrapper import ProwlerWrapper, get_prowler_version
 from ..scanner.result_processor import ResultProcessor
 
 logger = logging.getLogger(__name__)
+
+
+def generate_consumer_tag() -> str:
+    """Generate a unique consumer tag for this worker instance.
+
+    This allows multiple workers to consume from the same queue without collision.
+    Format: security-scan-{hostname}-{uuid}
+
+    Returns:
+        Unique consumer tag string
+    """
+    hostname = socket.gethostname()
+    unique_id = str(uuid.uuid4())[:8]
+    return f"security-scan-{hostname}-{unique_id}"
 
 
 class ScanConsumer:
@@ -32,6 +47,8 @@ class ScanConsumer:
         self.connection: pika.BlockingConnection | None = None
         self.channel: BlockingChannel | None = None
         self.should_stop = False
+        self.consumer_tag = generate_consumer_tag()
+        logger.info(f"Consumer initialized with tag: {self.consumer_tag}")
 
     def connect(self) -> None:
         """Establish connection to RabbitMQ."""
@@ -65,12 +82,17 @@ class ScanConsumer:
     ) -> None:
         """Process a scan job message.
 
+        IMPORTANT: We acknowledge messages BEFORE processing to prevent redelivery
+        loops. If a scan fails, it will be marked as failed in the database rather
+        than requeued, which could cause infinite loops for systematic errors.
+
         Args:
             channel: The channel object
             method: Delivery method
             properties: Message properties
             body: The message body
         """
+        scan_id = None
         try:
             message = json.loads(body.decode("utf-8"))
             logger.info(f"Received message: {message}")
@@ -88,20 +110,26 @@ class ScanConsumer:
                 channel.basic_ack(delivery_tag=method.delivery_tag)
                 return
 
-            # Process the scan
-            self._run_scan(scan_id)
-
-            # Acknowledge successful processing
+            # Acknowledge BEFORE processing to prevent redelivery loops
+            # If scan fails, it will be marked as failed in DB, not requeued
             channel.basic_ack(delivery_tag=method.delivery_tag)
-            logger.info(f"Successfully processed scan {scan_id}")
+            logger.info(f"Acknowledged message for scan {scan_id}, starting processing...")
+
+            # Process the scan (errors are caught and marked in DB)
+            self._run_scan(scan_id)
+            logger.info(f"Finished processing scan {scan_id}")
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode message: {e}")
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
         except Exception as e:
             logger.exception(f"Error processing message: {e}")
-            # Requeue the message for retry
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+            # Don't requeue - this prevents infinite loops
+            # The scan will be marked as failed if we got far enough to know the scan_id
+            try:
+                channel.basic_ack(delivery_tag=method.delivery_tag)
+            except Exception:
+                pass  # Channel may already be closed
 
     def _parse_laravel_job(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Parse Laravel queue job format.
@@ -192,11 +220,16 @@ class ScanConsumer:
                 self._mark_scan_failed(session, scan, "Cloud account not found")
                 return
 
-            # Mark scan as running
+            # Mark scan as running and record scanner info
             scan.status = "running"
             scan.started_at = datetime.now(timezone.utc)
+            scan.scanner_tool = "Prowler"
+            scan.scanner_version = get_prowler_version()
             session.commit()
-            logger.info(f"Started scan {scan_id} for cloud account {cloud_account.id}")
+            logger.info(
+                f"Started scan {scan_id} for cloud account {cloud_account.id} "
+                f"using Prowler {scan.scanner_version}"
+            )
 
             # Get the provider
             provider = ProviderFactory.create(cloud_account, settings.app_key)
@@ -300,7 +333,11 @@ class ScanConsumer:
         logger.error(f"Scan {scan.id} failed: {error}")
 
     def start(self) -> None:
-        """Start consuming messages from the queue."""
+        """Start consuming messages from the queue.
+
+        Each worker instance uses a unique consumer tag, allowing multiple
+        workers to consume from the same queue for horizontal scaling.
+        """
         # Set up signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -309,13 +346,14 @@ class ScanConsumer:
             try:
                 self.connect()
 
-                # Start consuming
+                # Start consuming with unique consumer tag for scalability
                 self.channel.basic_consume(
                     queue=settings.rabbitmq_queue,
                     on_message_callback=self.process_message,
+                    consumer_tag=self.consumer_tag,
                 )
 
-                logger.info("Waiting for messages...")
+                logger.info(f"Waiting for messages... (consumer: {self.consumer_tag})")
                 self.channel.start_consuming()
 
             except pika.exceptions.AMQPConnectionError as e:
@@ -351,6 +389,9 @@ class ScanConsumer:
     def _get_focus_pack_services(self, scan_type: str) -> list[str] | None:
         """Map focus pack scan type to Prowler services.
 
+        Note: Service names must match Prowler's service directory names exactly.
+        See: https://github.com/prowler-cloud/prowler/tree/master/prowler/providers/aws/services
+
         Args:
             scan_type: The scan type (e.g., 'focus_identity', 'focus_network')
 
@@ -358,9 +399,9 @@ class ScanConsumer:
             List of Prowler service names or None
         """
         focus_pack_services = {
-            "focus_identity": ["iam", "accessanalyzer", "sso", "cognito"],
+            "focus_identity": ["iam", "accessanalyzer", "cognito", "directoryservice", "organizations"],
             "focus_network": ["vpc", "ec2", "elb", "elbv2", "cloudfront", "waf", "wafv2", "shield"],
-            "focus_compute": ["ec2", "ecs", "eks", "lambda", "ssm"],
+            "focus_compute": ["ec2", "ecs", "eks", "awslambda", "ssm", "autoscaling"],
             "focus_data": ["s3", "rds", "dynamodb", "redshift", "elasticache", "backup"],
             "focus_logging": ["cloudwatch", "cloudtrail", "config", "guardduty", "securityhub"],
             "focus_secrets": ["kms", "secretsmanager", "acm"],

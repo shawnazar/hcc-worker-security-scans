@@ -89,6 +89,8 @@ class Scan(Base):
     status = Column(String(50), default=ScanStatus.PENDING.value)
     provider = Column(String(50), nullable=False)
     scan_type = Column(String(50), default="full")
+    scanner_tool = Column(String(255), nullable=True)
+    scanner_version = Column(String(255), nullable=True)
     checks_filter = Column(JSON, nullable=True)
     services_filter = Column(JSON, nullable=True)
     regions_filter = Column(JSON, nullable=True)

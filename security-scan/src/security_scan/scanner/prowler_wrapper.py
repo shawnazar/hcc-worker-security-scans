@@ -5,7 +5,18 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+import prowler
+
 logger = logging.getLogger(__name__)
+
+
+def get_prowler_version() -> str:
+    """Get the installed Prowler version.
+
+    Returns:
+        The Prowler version string
+    """
+    return getattr(prowler, "__version__", "unknown")
 
 
 @dataclass
