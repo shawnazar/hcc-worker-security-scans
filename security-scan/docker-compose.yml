@@ -1,0 +1,37 @@
+services:
+  security-scan:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Database settings (must match Laravel's database)
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: laravel
+      DB_USERNAME: sail
+      DB_PASSWORD: password
+      # Laravel APP_KEY for decrypting credentials
+      APP_KEY: ${APP_KEY}
+      # RabbitMQ settings
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      RABBITMQ_QUEUE: security-scans
+      # Prowler settings
+      PROWLER_OUTPUT_DIR: /tmp/prowler
+    volumes:
+      - prowler-output:/tmp/prowler
+    networks:
+      - hcc-portal_sail
+    depends_on:
+      - mariadb
+      - rabbitmq
+
+volumes:
+  prowler-output:
+
+networks:
+  hcc-portal_sail:
+    external: true
