@@ -32,6 +32,14 @@ services:
       RABBITMQ_QUEUE: security-scans
       # Prowler settings
       PROWLER_OUTPUT_DIR: /tmp/prowler
+      # AWS credentials for cross-account role assumption
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      # Sentry error tracking
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-1.0}
     volumes:
       - prowler-output:/tmp/prowler
     networks:

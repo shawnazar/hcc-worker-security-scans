@@ -71,9 +71,23 @@ class AwsProvider(BaseProvider):
         """
         import boto3
 
+        from ..config import settings
+
         logger.info(f"Assuming role: {role_arn}")
 
-        sts = boto3.client("sts")
+        # Use HCC's AWS credentials from config to assume the customer's role
+        if not settings.aws_access_key_id or not settings.aws_secret_access_key:
+            raise ValueError(
+                "AWS credentials not configured. Set AWS_ACCESS_KEY_ID and "
+                "AWS_SECRET_ACCESS_KEY environment variables."
+            )
+
+        sts = boto3.client(
+            "sts",
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+            region_name=settings.aws_default_region,
+        )
         params: dict[str, Any] = {
             "RoleArn": role_arn,
             "RoleSessionName": f"hcc-scan-{self.cloud_account.id}",

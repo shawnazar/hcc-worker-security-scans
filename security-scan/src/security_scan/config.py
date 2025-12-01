@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # Prowler settings
     prowler_output_dir: str = "/tmp/prowler"
 
+    # AWS credentials for cross-account role assumption
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_default_region: str = "us-east-1"
+
     # Sentry settings
     sentry_dsn: str | None = None
     sentry_environment: str = "production"
