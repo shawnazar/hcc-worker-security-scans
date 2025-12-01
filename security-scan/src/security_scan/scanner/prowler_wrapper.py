@@ -108,10 +108,9 @@ class ProwlerWrapper:
             from prowler.providers.aws.aws_provider import AwsProvider as ProwlerAwsProvider
 
             # Prowler will use environment variables for credentials
-            return ProwlerAwsProvider(
-                assumed_role_info=None,
-                audit_config=None,
-            )
+            # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and optionally AWS_SESSION_TOKEN
+            # should be set in the environment before calling this
+            return ProwlerAwsProvider()
         elif self.provider == "gcp":
             # GCP support to be added
             raise NotImplementedError("GCP provider not yet implemented")

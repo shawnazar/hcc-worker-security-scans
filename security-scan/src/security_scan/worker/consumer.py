@@ -214,11 +214,8 @@ class ScanConsumer:
             )
 
             # Determine check filters
-            checks = None
-            services = None
-            if scan.filters:
-                checks = scan.filters.get("checks")
-                services = scan.filters.get("services")
+            checks = scan.checks_filter
+            services = scan.services_filter
 
             # Run the scan
             findings = prowler.run_scan(

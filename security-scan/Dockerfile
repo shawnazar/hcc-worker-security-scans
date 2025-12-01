@@ -8,7 +8,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
 # Copy project files for dependency installation
-COPY pyproject.toml .
+COPY pyproject.toml README.md ./
 
 # Copy lock file if it exists (for reproducible builds)
 COPY uv.lock* ./
@@ -35,11 +35,11 @@ RUN useradd --create-home --shell /bin/bash appuser
 # Set working directory
 WORKDIR /app
 
-# Copy virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
+# Copy virtual environment from builder (with correct ownership)
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 
-# Copy application code
-COPY --from=builder /app/src /app/src
+# Copy application code (with correct ownership)
+COPY --from=builder --chown=appuser:appuser /app/src /app/src
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH"

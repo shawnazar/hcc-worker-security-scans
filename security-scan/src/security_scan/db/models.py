@@ -56,8 +56,9 @@ class CloudAccount(Base):
     __tablename__ = "cloud_accounts"
 
     id = Column(Integer, primary_key=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # These reference Laravel-managed tables, so we don't define FK constraints
+    organization_id = Column(Integer, nullable=False)
+    created_by = Column(Integer, nullable=False)
     name = Column(String(255), nullable=False)
     provider = Column(String(50), nullable=False)  # aws, gcp, azure
     auth_type = Column(String(50), nullable=False)
@@ -80,9 +81,10 @@ class Scan(Base):
     __tablename__ = "scans"
 
     id = Column(Integer, primary_key=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    # organization_id and initiated_by reference Laravel-managed tables
+    organization_id = Column(Integer, nullable=False)
     cloud_account_id = Column(Integer, ForeignKey("cloud_accounts.id"), nullable=False)
-    initiated_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    initiated_by = Column(Integer, nullable=False)
     status = Column(String(50), default=ScanStatus.PENDING.value)
     provider = Column(String(50), nullable=False)
     scan_type = Column(String(50), default="full")

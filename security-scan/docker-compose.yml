@@ -12,7 +12,8 @@ services:
       DB_USERNAME: sail
       DB_PASSWORD: password
       # Laravel APP_KEY for decrypting credentials
-      APP_KEY: ${APP_KEY}
+      # Copy from hcc-portal/.env or set in .env file
+      APP_KEY: ${APP_KEY:-base64:zDLSA8UklQEsNXyhtYRAM4hy3AXIYA/J6SEkcAUaXZM=}
       # RabbitMQ settings
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
@@ -25,9 +26,6 @@ services:
       - prowler-output:/tmp/prowler
     networks:
       - hcc-portal_sail
-    depends_on:
-      - mariadb
-      - rabbitmq
 
 volumes:
   prowler-output:
