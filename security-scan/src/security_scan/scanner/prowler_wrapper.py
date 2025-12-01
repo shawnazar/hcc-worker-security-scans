@@ -3,9 +3,8 @@
 import logging
 import os
 from dataclasses import dataclass
+from importlib.metadata import version as get_package_version
 from typing import Any
-
-import prowler
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,10 @@ def get_prowler_version() -> str:
     Returns:
         The Prowler version string
     """
-    return getattr(prowler, "__version__", "unknown")
+    try:
+        return get_package_version("prowler")
+    except Exception:
+        return "unknown"
 
 
 @dataclass
