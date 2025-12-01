@@ -2,9 +2,20 @@
 
 import logging
 import os
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class OutputOptions:
+    """Minimal output options for Prowler check execution."""
+
+    only_logs: bool = True
+    verbose: bool = False
+    fixer: bool = False
+    status: list[str] | None = None
 
 
 class ProwlerWrapper:
@@ -48,44 +59,46 @@ class ProwlerWrapper:
             List of Prowler finding objects
         """
         try:
-            # Import Prowler components
-            # Note: Prowler's API may vary between versions
-            # This is designed for Prowler 5.x
-            from prowler.lib.check.check import execute_checks
-            from prowler.lib.check.checks_loader import load_checks_to_execute
-
             logger.info(f"Initializing Prowler for provider: {self.provider}")
 
             # Create provider instance based on provider type
             prowler_provider = self._create_prowler_provider()
 
+            # Import check loading function
+            from prowler.lib.check.checks_loader import load_checks_to_execute
+
             # Load checks to execute
+            # Note: Prowler 5.x uses check_list and service_list parameters
             checks_to_run = load_checks_to_execute(
-                checks_to_execute=checks if checks else None,
-                service_list=services if services else None,
                 provider=prowler_provider.type,
+                check_list=checks if checks else None,
+                service_list=services if services else None,
             )
 
             total_checks = len(checks_to_run)
             logger.info(f"Loaded {total_checks} checks to execute")
 
-            # Execute checks
-            findings = []
-            for i, check in enumerate(checks_to_run):
-                try:
-                    check_findings = execute_checks(
-                        checks=[check],
-                        provider=prowler_provider,
-                    )
-                    findings.extend(check_findings)
+            if total_checks == 0:
+                logger.warning("No checks to run")
+                return []
 
-                    if (i + 1) % 10 == 0 or (i + 1) == total_checks:
-                        logger.info(f"Progress: {i + 1}/{total_checks} checks completed")
+            # Use Prowler's execute_checks function which handles provider context properly
+            from prowler.lib.check.check import execute_checks
 
-                except Exception as e:
-                    logger.warning(f"Check {check} failed: {e}")
+            # Create minimal output options - only_logs=True uses simpler execution path
+            output_options = OutputOptions(only_logs=True, verbose=False)
 
-            logger.info(f"Scan complete. Found {len(findings)} findings")
+            # Execute all checks
+            logger.info("Starting check execution...")
+            findings = execute_checks(
+                checks_to_execute=list(checks_to_run),
+                global_provider=prowler_provider,
+                custom_checks_metadata=None,
+                config_file="",
+                output_options=output_options,
+            )
+
+            logger.info(f"Scan complete. Executed {total_checks} checks, found {len(findings)} findings")
             return findings
 
         except ImportError as e:

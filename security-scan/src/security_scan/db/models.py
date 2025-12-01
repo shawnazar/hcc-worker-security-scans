@@ -1,5 +1,6 @@
 """SQLAlchemy models matching Laravel's database schema."""
 
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -163,24 +164,104 @@ class ScanFinding(Base):
         Returns:
             A new ScanFinding instance
         """
+        # Safely serialize raw_finding to JSON-compatible dict
+        raw_finding = None
+        if hasattr(finding, "__dict__"):
+            raw_finding = cls._serialize_to_json(finding.__dict__)
+
+        # Extract check_metadata for nested properties
+        check_metadata = getattr(finding, "check_metadata", None)
+
+        # Extract check_id from check_metadata.CheckID or fallback to finding attribute
+        check_id = "unknown"
+        if check_metadata and hasattr(check_metadata, "CheckID"):
+            check_id = check_metadata.CheckID
+        elif hasattr(finding, "check_id"):
+            check_id = finding.check_id
+
+        # Extract severity from check_metadata.Severity or fallback
+        severity = "informational"
+        if check_metadata and hasattr(check_metadata, "Severity"):
+            severity = check_metadata.Severity.lower() if check_metadata.Severity else "informational"
+        elif hasattr(finding, "severity"):
+            severity = finding.severity.lower() if finding.severity else "informational"
+
+        # Extract service from check_metadata.ServiceName or fallback
+        service = None
+        if check_metadata and hasattr(check_metadata, "ServiceName"):
+            service = check_metadata.ServiceName
+        elif hasattr(finding, "service_name"):
+            service = finding.service_name
+
+        # Extract resource info from finding.resource
+        resource = getattr(finding, "resource", None)
+        resource_id = None
+        resource_arn = None
+        resource_name = None
+        if resource:
+            resource_id = getattr(resource, "name", None) or getattr(resource, "entity", None)
+            resource_arn = getattr(resource, "arn", None)
+            resource_name = getattr(resource, "name", None)
+
+        # Extract region
+        region = getattr(finding, "region", None)
+
+        # Extract remediation info from check_metadata.Remediation
+        remediation_recommendation = None
+        remediation_url = None
+        if check_metadata and hasattr(check_metadata, "Remediation"):
+            remediation = check_metadata.Remediation
+            if remediation and hasattr(remediation, "Recommendation"):
+                rec = remediation.Recommendation
+                remediation_recommendation = getattr(rec, "Text", None)
+                remediation_url = getattr(rec, "Url", None)
+
+        # Extract risk from check_metadata
+        risk = None
+        if check_metadata and hasattr(check_metadata, "Risk"):
+            risk = check_metadata.Risk
+
         return cls(
             scan_id=scan_id,
-            check_id=getattr(finding, "check_id", "unknown"),
+            check_id=check_id,
             status=getattr(finding, "status", "INFO"),
-            severity=getattr(finding, "severity", "informational").lower(),
-            service=getattr(finding, "service_name", None),
-            region=getattr(finding, "region", None),
-            resource_id=getattr(finding, "resource_id", None),
-            resource_arn=getattr(finding, "resource_arn", None),
-            resource_name=getattr(finding, "resource_name", None),
+            severity=severity,
+            service=service,
+            region=region,
+            resource_id=resource_id,
+            resource_arn=resource_arn,
+            resource_name=resource_name,
             status_extended=getattr(finding, "status_extended", None),
-            risk=getattr(finding, "risk", None),
-            remediation_recommendation=getattr(
-                finding, "remediation", {}).get("recommendation", {}).get("text")
-                if hasattr(finding, "remediation") else None,
-            remediation_url=getattr(
-                finding, "remediation", {}).get("recommendation", {}).get("url")
-                if hasattr(finding, "remediation") else None,
+            risk=risk,
+            remediation_recommendation=remediation_recommendation,
+            remediation_url=remediation_url,
             compliance=getattr(finding, "compliance", None),
-            raw_finding=finding.__dict__ if hasattr(finding, "__dict__") else None,
+            raw_finding=raw_finding,
         )
+
+    @staticmethod
+    def _serialize_to_json(obj: Any) -> Any:
+        """Recursively convert an object to JSON-serializable format.
+
+        Args:
+            obj: Object to serialize
+
+        Returns:
+            JSON-serializable version of the object
+        """
+        if obj is None:
+            return None
+        if isinstance(obj, (str, int, float, bool)):
+            return obj
+        if isinstance(obj, (datetime,)):
+            return obj.isoformat()
+        if isinstance(obj, Enum):
+            return obj.value
+        if isinstance(obj, dict):
+            return {k: ScanFinding._serialize_to_json(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [ScanFinding._serialize_to_json(item) for item in obj]
+        if hasattr(obj, "__dict__"):
+            return ScanFinding._serialize_to_json(obj.__dict__)
+        # Fallback to string representation
+        return str(obj)

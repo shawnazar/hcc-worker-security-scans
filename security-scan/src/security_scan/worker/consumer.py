@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import signal
 import sys
 import time
@@ -206,6 +207,13 @@ class ScanConsumer:
             # Set up credentials
             credentials = provider.get_credentials()
             env_vars = provider.setup_environment(credentials)
+
+            # Actually set the environment variables for Prowler to use
+            for key, value in env_vars.items():
+                os.environ[key] = value
+                logger.debug(f"Set environment variable: {key}")
+
+            logger.info(f"Set {len(env_vars)} AWS environment variables")
 
             # Create and run Prowler scan
             prowler = ProwlerWrapper(
