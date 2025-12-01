@@ -30,8 +30,8 @@ class GcpProvider(BaseProvider):
         Args:
             credentials: Decrypted credentials dictionary containing either:
                 - key_json: Service account key JSON
-                - OR workload identity federation fields: project_id, workload_identity_pool_id,
-                  workload_identity_provider_id, service_account_email
+                - OR workload identity federation fields: project_id, project_number,
+                  workload_identity_pool_id, workload_identity_provider_id, service_account_email
 
         Returns:
             Dictionary of GCP environment variables
@@ -81,14 +81,13 @@ class GcpProvider(BaseProvider):
         env = {}
 
         project_id = credentials["project_id"]
+        project_number = credentials["project_number"]
         pool_id = credentials["workload_identity_pool_id"]
         provider_id = credentials["workload_identity_provider_id"]
         service_account_email = credentials["service_account_email"]
 
-        # Get the project number from project_id (we need to look this up or have it passed)
-        # For now, we'll use the project_id format which may need adjustment
-        # GCP Workload Identity Federation uses project numbers in the audience
-        audience = f"//iam.googleapis.com/projects/{project_id}/locations/global/workloadIdentityPools/{pool_id}/providers/{provider_id}"
+        # GCP Workload Identity Federation requires the numeric project number in the audience
+        audience = f"//iam.googleapis.com/projects/{project_number}/locations/global/workloadIdentityPools/{pool_id}/providers/{provider_id}"
 
         # Create the credential configuration JSON for external account credentials
         # This tells GCP client libraries how to authenticate via AWS
