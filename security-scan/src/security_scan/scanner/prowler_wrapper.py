@@ -50,6 +50,7 @@ class ProwlerWrapper:
         credentials: dict[str, Any],
         checks: list[str] | None = None,
         services: list[str] | None = None,
+        compliance: str | None = None,
     ) -> list[Any]:
         """Run a Prowler security scan.
 
@@ -57,12 +58,15 @@ class ProwlerWrapper:
             credentials: Provider credentials dictionary (for env setup - should be done by caller)
             checks: Optional list of specific checks to run
             services: Optional list of services to scan
+            compliance: Optional compliance framework to run (e.g., 'cis_2.0_aws', 'soc2_aws')
 
         Returns:
             List of Prowler finding objects
         """
         try:
             logger.info(f"Initializing Prowler for provider: {self.provider}")
+            if compliance:
+                logger.info(f"Running compliance scan: {compliance}")
 
             # Create provider instance based on provider type
             prowler_provider = self._create_prowler_provider()
@@ -72,10 +76,12 @@ class ProwlerWrapper:
 
             # Load checks to execute
             # Note: Prowler 5.x uses check_list and service_list parameters
+            # Compliance framework will filter checks based on the framework requirements
             checks_to_run = load_checks_to_execute(
                 provider=prowler_provider.type,
                 check_list=checks if checks else None,
                 service_list=services if services else None,
+                compliance_framework=compliance if compliance else None,
             )
 
             total_checks = len(checks_to_run)
@@ -128,9 +134,11 @@ class ProwlerWrapper:
             # should be set in the environment before calling this
 
             # If regions are specified, limit the scan to those regions
+            # Prowler's AwsProvider expects 'regions' as a set
             if self.regions:
-                logger.info(f"Limiting scan to regions: {self.regions}")
-                return ProwlerAwsProvider(scan_regions=self.regions)
+                regions_set = set(self.regions)
+                logger.info(f"Limiting scan to regions: {regions_set}")
+                return ProwlerAwsProvider(regions=regions_set)
 
             return ProwlerAwsProvider()
         elif self.provider == "gcp":
