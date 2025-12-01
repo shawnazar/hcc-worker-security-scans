@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # Prowler settings
     prowler_output_dir: str = "/tmp/prowler"
 
+    # Sentry settings
+    sentry_dsn: str | None = None
+    sentry_environment: str = "production"
+    sentry_traces_sample_rate: float = 1.0
+
     @property
     def database_url(self) -> str:
         """Get the SQLAlchemy database URL."""
