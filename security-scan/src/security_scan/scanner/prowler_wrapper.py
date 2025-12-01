@@ -154,12 +154,41 @@ class ProwlerWrapper:
                 return ProwlerAwsProvider(regions=regions_set)
 
             return ProwlerAwsProvider()
+
         elif self.provider == "gcp":
-            # GCP support to be added
-            raise NotImplementedError("GCP provider not yet implemented")
+            from prowler.providers.gcp.gcp_provider import GcpProvider as ProwlerGcpProvider
+
+            # GCP credentials should be set up via GOOGLE_APPLICATION_CREDENTIALS
+            # environment variable (pointing to service account key file)
+            # and CLOUDSDK_CORE_PROJECT for the project ID
+
+            # Get project IDs from environment if set
+            project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("CLOUDSDK_CORE_PROJECT")
+
+            kwargs = {}
+            if project_id:
+                kwargs["project_ids"] = [project_id]
+                logger.info(f"GCP scan will target project: {project_id}")
+
+            return ProwlerGcpProvider(**kwargs)
+
         elif self.provider == "azure":
-            # Azure support to be added
-            raise NotImplementedError("Azure provider not yet implemented")
+            from prowler.providers.azure.azure_provider import AzureProvider as ProwlerAzureProvider
+
+            # Azure credentials should be set up via environment variables:
+            # AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
+            # and optionally AZURE_SUBSCRIPTION_ID
+
+            # Use service principal authentication via environment variables
+            subscription_id = os.environ.get("AZURE_SUBSCRIPTION_ID")
+
+            kwargs = {"sp_env_auth": True}
+            if subscription_id:
+                kwargs["subscription_ids"] = [subscription_id]
+                logger.info(f"Azure scan will target subscription: {subscription_id}")
+
+            return ProwlerAzureProvider(**kwargs)
+
         else:
             raise NotImplementedError(f"Provider {self.provider} not supported")
 
