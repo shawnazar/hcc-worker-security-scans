@@ -76,12 +76,12 @@ class ProwlerWrapper:
 
             # Load checks to execute
             # Note: Prowler 5.x uses check_list and service_list parameters
-            # Compliance framework will filter checks based on the framework requirements
+            # compliance_frameworks expects a list of framework names
             checks_to_run = load_checks_to_execute(
                 provider=prowler_provider.type,
                 check_list=checks if checks else None,
                 service_list=services if services else None,
-                compliance_framework=compliance if compliance else None,
+                compliance_frameworks=[compliance] if compliance else None,
             )
 
             total_checks = len(checks_to_run)
