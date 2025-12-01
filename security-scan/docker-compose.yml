@@ -8,7 +8,7 @@ services:
     # Each worker gets a unique consumer tag to prevent message collisions
     deploy:
       mode: replicated
-      replicas: 1
+      replicas: 3
       resources:
         limits:
           memory: 2G
