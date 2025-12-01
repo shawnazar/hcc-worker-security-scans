@@ -219,6 +219,7 @@ class ScanConsumer:
             prowler = ProwlerWrapper(
                 provider=cloud_account.provider,
                 output_dir=settings.prowler_output_dir,
+                regions=scan.regions_filter,
             )
 
             # Determine check filters

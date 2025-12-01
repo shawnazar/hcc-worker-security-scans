@@ -91,6 +91,7 @@ class Scan(Base):
     scan_type = Column(String(50), default="full")
     checks_filter = Column(JSON, nullable=True)
     services_filter = Column(JSON, nullable=True)
+    regions_filter = Column(JSON, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     total_checks = Column(Integer, default=0)
@@ -134,6 +135,7 @@ class ScanFinding(Base):
     id = Column(Integer, primary_key=True)
     scan_id = Column(Integer, ForeignKey("scans.id"), nullable=False)
     check_id = Column(String(255), nullable=False)
+    check_title = Column(String(255), nullable=True)
     status = Column(String(50), nullable=False)  # PASS, FAIL, INFO, MANUAL
     severity = Column(String(50), nullable=False)  # critical, high, medium, low, informational
     service = Column(String(100), nullable=True)
@@ -142,6 +144,7 @@ class ScanFinding(Base):
     resource_arn = Column(Text, nullable=True)
     resource_name = Column(String(255), nullable=True)
     status_extended = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
     risk = Column(Text, nullable=True)
     remediation_recommendation = Column(Text, nullable=True)
     remediation_url = Column(Text, nullable=True)
@@ -179,6 +182,16 @@ class ScanFinding(Base):
         elif hasattr(finding, "check_id"):
             check_id = finding.check_id
 
+        # Extract check_title from check_metadata.CheckTitle
+        check_title = None
+        if check_metadata and hasattr(check_metadata, "CheckTitle"):
+            check_title = check_metadata.CheckTitle
+
+        # Extract description from check_metadata.Description
+        description = None
+        if check_metadata and hasattr(check_metadata, "Description"):
+            description = check_metadata.Description
+
         # Extract severity from check_metadata.Severity or fallback
         severity = "informational"
         if check_metadata and hasattr(check_metadata, "Severity"):
@@ -193,15 +206,18 @@ class ScanFinding(Base):
         elif hasattr(finding, "service_name"):
             service = finding.service_name
 
-        # Extract resource info from finding.resource
+        # Extract resource info - these are top-level attributes in Prowler findings
+        resource_id = getattr(finding, "resource_id", None)
+        resource_arn = getattr(finding, "resource_arn", None)
+
+        # Extract resource_name from the resource object if available
         resource = getattr(finding, "resource", None)
-        resource_id = None
-        resource_arn = None
         resource_name = None
         if resource:
-            resource_id = getattr(resource, "name", None) or getattr(resource, "entity", None)
-            resource_arn = getattr(resource, "arn", None)
             resource_name = getattr(resource, "name", None)
+        # Fallback: use resource_id as display name if no name available
+        if not resource_name and resource_id:
+            resource_name = resource_id
 
         # Extract region
         region = getattr(finding, "region", None)
@@ -224,6 +240,7 @@ class ScanFinding(Base):
         return cls(
             scan_id=scan_id,
             check_id=check_id,
+            check_title=check_title,
             status=getattr(finding, "status", "INFO"),
             severity=severity,
             service=service,
@@ -232,6 +249,7 @@ class ScanFinding(Base):
             resource_arn=resource_arn,
             resource_name=resource_name,
             status_extended=getattr(finding, "status_extended", None),
+            description=description,
             risk=risk,
             remediation_recommendation=remediation_recommendation,
             remediation_url=remediation_url,

@@ -29,15 +29,18 @@ class ProwlerWrapper:
         self,
         provider: str,
         output_dir: str = "/tmp/prowler",
+        regions: list[str] | None = None,
     ):
         """Initialize the Prowler wrapper.
 
         Args:
             provider: Cloud provider name (aws, gcp, azure)
             output_dir: Directory for Prowler output files
+            regions: Optional list of regions to scan (e.g., ['us-east-1', 'us-west-2'])
         """
         self.provider = provider
         self.output_dir = output_dir
+        self.regions = regions
 
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
@@ -123,6 +126,12 @@ class ProwlerWrapper:
             # Prowler will use environment variables for credentials
             # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and optionally AWS_SESSION_TOKEN
             # should be set in the environment before calling this
+
+            # If regions are specified, limit the scan to those regions
+            if self.regions:
+                logger.info(f"Limiting scan to regions: {self.regions}")
+                return ProwlerAwsProvider(scan_regions=self.regions)
+
             return ProwlerAwsProvider()
         elif self.provider == "gcp":
             # GCP support to be added
