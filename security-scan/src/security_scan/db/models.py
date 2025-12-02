@@ -1,6 +1,7 @@
 """SQLAlchemy models matching Laravel's database schema."""
 
 import json
+import uuid as uuid_lib
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -15,6 +16,11 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+
+def generate_uuid() -> str:
+    """Generate a new UUID string."""
+    return str(uuid_lib.uuid4())
 
 
 class Base(DeclarativeBase):
@@ -57,6 +63,7 @@ class CloudAccount(Base):
     __tablename__ = "cloud_accounts"
 
     id = Column(Integer, primary_key=True)
+    uuid = Column(String(36), nullable=False, unique=True, default=generate_uuid)
     # These reference Laravel-managed tables, so we don't define FK constraints
     organization_id = Column(Integer, nullable=False)
     created_by = Column(Integer, nullable=False)
@@ -82,6 +89,7 @@ class Scan(Base):
     __tablename__ = "scans"
 
     id = Column(Integer, primary_key=True)
+    uuid = Column(String(36), nullable=False, unique=True, default=generate_uuid)
     # organization_id and initiated_by reference Laravel-managed tables
     organization_id = Column(Integer, nullable=False)
     cloud_account_id = Column(Integer, ForeignKey("cloud_accounts.id"), nullable=False)
@@ -135,6 +143,7 @@ class ScanFinding(Base):
     __tablename__ = "scan_findings"
 
     id = Column(Integer, primary_key=True)
+    uuid = Column(String(36), nullable=False, unique=True, default=generate_uuid)
     scan_id = Column(Integer, ForeignKey("scans.id"), nullable=False)
     check_id = Column(String(255), nullable=False)
     check_title = Column(String(255), nullable=True)
